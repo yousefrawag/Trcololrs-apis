@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt");
 const nodemailer = require("nodemailer");
 const path = require("path");
 const { log } = require("console");
+const customerSchema = require("../model/customerSchema")
 const logo = path.join(__dirname, "../images/logo2.jpg");
 exports.getUsers = (req, res, next) => {
   const {field , searTerm} = req.query
@@ -185,20 +186,102 @@ exports.deleteUser = (req, res, next) => {
     .catch((err) => next(err));
 };
 
-exports.getUserById = (req, res, next) => {
+exports.getUserById = async (req, res, next) => {
   const { id } = req.params;
+  const { startDate, endDate } = req.query;
 
-  userSchema
-    .findById(id)
-    .populate("role")
-    .select("-password")
-    .then((data) => {
-      if (!data) {
-        res.status(404).json({ message: "User doesn't exist" });
-      }
-      res.status(200).json({ data });
-    })
-    .catch((err) => next(err));
+  // Validate the user ID (ensure it's a number)
+  if (isNaN(id)) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
+  // Convert id to a number
+  const userId = Number(id);
+
+  // Validate the date range (if provided)
+  if (startDate && isNaN(new Date(startDate))) {
+    return res.status(400).json({ message: "Invalid start date" });
+  }
+  if (endDate && isNaN(new Date(endDate))) {
+    return res.status(400).json({ message: "Invalid end date" });
+  }
+
+  // Calculate default date ranges if not provided
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1); // Start of the current month
+
+  // Use provided dates or default to the current month
+  const dateFilter = {
+    $gte: startDate ? new Date(startDate) : startOfMonth, // Default to start of the month
+    $lte: endDate ? new Date(endDate) : now, // Default to the current time
+  };
+
+  try {
+    // Log the userId and date range for debugging
+    console.log("Fetching data for user ID:", userId);
+    console.log("Date range:", dateFilter);
+
+    // Fetch payment type totals for the user
+    const TotalpyemtyypeforEachuser = await customerSchema.aggregate([
+      {
+        $match: { addBy: userId  , createdAt:dateFilter}, // Filter by user using addBy (directly use the number)
+      },
+      {
+        $group: {
+          _id: "$Paymenttype", // Group by payment type
+          totalAmount: { $sum: "$total" }, // Sum of total amounts for each payment type
+          totalArrivedCash: { $sum: "$Arrievcashe" }, // Sum of arrivedCash
+          totalInProcessCash: { $sum: "$inprocessCashe" }, // Sum of inProcessCash
+        },
+      },
+    ]);
+
+    // Log the payment type totals for debugging
+    console.log("Payment type totals:", TotalpyemtyypeforEachuser);
+
+    // Fetch financial totals for the specified date range
+    const TotalFince = await customerSchema.aggregate([
+      {
+        $match: {
+          addBy: userId, // Filter by user using addBy (directly use the number)
+          createdAt: dateFilter, // Use the calculated date range
+        },
+      },
+      {
+        $group: {
+          _id: null, // Group all documents
+          totalArrivedCash: { $sum: "$Arrievcashe" }, // Sum of arrivedCash
+          totalInProcessCash: { $sum: "$inprocessCashe" }, // Sum of inProcessCash
+          totalAmount: { $sum: "$total" }, // Sum of all amounts
+        },
+      },
+    ]);
+
+    // Log the financial totals for debugging
+    console.log("Financial totals:", TotalFince);
+
+    // Fetch user details
+    const user = await userSchema.findById(userId).populate("role").select("-password");
+
+    // Check if the user exists
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Return the response
+    res.status(200).json({
+      data: user,
+      TotalFince: TotalFince[0] || {
+        totalArrivedCash: 0,
+        totalInProcessCash: 0,
+        totalAmount: 0,
+      },
+      TotalpyemtyypeforEachuser,
+    });
+  } catch (error) {
+    console.error("Error fetching user details:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
 };
 
 exports.changePassword = async (req, res, next) => {

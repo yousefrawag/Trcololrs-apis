@@ -26,7 +26,7 @@ server.use((req, res, next) => {
   next();
 });
 const corsOptions = {
-  origin: ["https://tr-colors-admin.netlify.app" , 'http://localhost:5173' , "https://trcololrs.vercel.app" , "http://localhost:3001"], // specify the origin that you want to allow
+  origin: ["https://tr-colors-dashboards.netlify.app" , 'https://www.trcolors.com'  , "https://tr-colors-dashboards.netlify.app"], // specify the origin that you want to allow
   methods: 'GET,POST,PUT,DELETE , PATCH ', // specify the methods you want to allow
   allowedHeaders: 'Content-Type,Authorization', // specify the headers you want to allow
   credentials: true // Allow credentials to be included in the request
